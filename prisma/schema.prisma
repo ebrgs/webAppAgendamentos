@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// MODELS
+
+// 1. Atualize o seu model User para ficar assim:
+model User {
+  id            String    @id @default(cuid())
+  name          String?   // Agora é opcional (?)
+  email         String?   @unique
+  emailVerified DateTime? // Novo: Necessário para o NextAuth saber se o email foi confirmado
+  image         String?   // Novo: Padrão do NextAuth
+
+  bookings      Booking[]
+
+  // Novos relacionamentos do NextAuth
+  accounts      Account[]
+  sessions      Session[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("users")
+}
+
+// 2. Adicione estes três novos modelos obrigatórios no final do arquivo:
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Room {
+  id                String    @id @default(cuid())
+  name              String    // Ex: "Sala de Reuniões Principal", "Sala A"
+  capacity          Int?      // Quantas pessoas cabem
+  description       String?   // Ex: "Possui projetor e quadro branco"
+  
+  // Relacionamento: Uma sala pode ter várias reservas
+  bookings          Booking[]
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("rooms")
+}
+
+model Booking {
+  id                String   @id @default(cuid())
+  title             String   // Motivo da reunião (Ex: "Alinhamento Semanal")
+  
+  // A magia do agendamento acontece aqui
+  startTime         DateTime
+  endTime           DateTime
+
+  // Chaves Estrangeiras (Relações)
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+
+  organizerEmail     String?
+  participantsEmails String?
+
+  reminderSent      Boolean   @default(false)
+
+  roomId            String
+  room              Room     @relation(fields: [roomId], references: [id])
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Índices para otimizar as consultas de verificação de disponibilidade
+  @@index([roomId, startTime, endTime])
+  @@map("bookings")
+}
