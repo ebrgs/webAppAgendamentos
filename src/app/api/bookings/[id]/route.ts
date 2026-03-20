@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '../../../../lib/prisma'
+import { prisma } from '@/lib/prisma'
 
 // Interface para o Next.js entender os parâmetros da rota
 type RouteParams = {
