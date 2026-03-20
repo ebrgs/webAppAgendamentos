@@ -10,7 +10,7 @@ const globalForPrisma = globalThis as unknown as {
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 // 2. Envolvemos essa conexão no Adaptador do Prisma
-const adapter = new PrismaPg(pool)
+const adapter = new PrismaPg(pool as any)
 
 // 3. Inicializamos o Prisma passando o adaptador (Isso resolve o seu erro!)
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter })
