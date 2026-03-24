@@ -398,6 +398,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 65vh;
+  overflow-y: scroll;
 }
 
 .selectedDayTitle {
@@ -449,4 +451,127 @@
   background-color: #f3f4f6; /* Fundo cinza claro */
   color: #4b5563;            /* Texto cinza escuro */
   border: 1px solid #d1d5db; /* Bordinha discreta */
+}
+
+/* --- LAYOUT DIVIDIDO DO CALENDÁRIO --- */
+
+.calendarSplitLayout {
+  display: flex;
+  flex-direction: column; /* No celular: Calendário em cima, Lista embaixo */
+  gap: 32px;
+  margin-top: 24px;
+}
+
+.calendarSide {
+  width: 100%;
+}
+
+.meetingsSide {
+  width: 100%;
+}
+
+/* 💻 A MÁGICA PARA O COMPUTADOR 💻 */
+@media (min-width: 768px) {
+  .calendarSplitLayout {
+    display: grid;
+    /* Coluna 1: Lista (1fr = pega o espaço que sobrar) | Coluna 2: Calendário (350px fixo) */
+    grid-template-columns: 1fr 350px; 
+    gap: 48px;
+    align-items: start;
+  }
+
+  .calendarSide {
+    grid-column: 2; /* Força o calendário a ir para a Direita */
+    position: sticky; /* Faz o calendário grudar na tela enquanto a lista rola */
+    top: 24px;
+  }
+
+  .meetingsSide {
+    grid-column: 1; /* Força a lista a ir para a Esquerda */
+    grid-row: 1; /* Mantém os dois alinhados no topo */
+  }
+}
+
+/* --- ESTILOS DA VISÃO SEMANAL (AGENDA GOOGLE) --- */
+
+.weekAgendaContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Barra de Navegação da Semana */
+.weekHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  padding: 16px 24px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.weekTitle {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: #111827;
+}
+
+/* Lista Vertical dos Dias */
+.weekDaysList {
+  display: flex;
+  flex-direction: column;
+  gap: 32px; /* Espaço generoso entre os dias da semana */
+}
+
+.dayGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Cabeçalho de Cada Dia (Ex: Segunda-feira, 23/03) */
+.dayGroupHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 8px;
+}
+
+.dayName {
+  text-transform: capitalize;
+  font-weight: 600;
+  font-size: 1.25rem;
+  color: #111827;
+}
+
+.dayDate {
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+/* Grid Inteligente para os Cartões */
+.dayGroupCards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+/* Se for no PC e tiver muitas reuniões no mesmo dia, coloca lado a lado */
+@media (min-width: 768px) {
+  .dayGroupCards {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); 
+  }
+}
+
+.emptyDay {
+  color: #9ca3af;
+  font-style: italic;
+  font-size: 0.95rem;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px dashed #d1d5db;
 }

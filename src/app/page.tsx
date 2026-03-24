@@ -253,6 +253,38 @@ export default function AgendamentosPage() {
       console.error(error);
     }
   };
+// --- LÓGICA DA VISÃO SEMANAL (AGENDA) ---
+  
+  // 1. Criamos a data completa juntando o Ano e Mês do calendário com o Dia clicado
+  const dataCompletaSelecionada = new Date(ano, mes, diaSelecionado);
+
+  const inicioDaSemana = new Date(dataCompletaSelecionada);
+  inicioDaSemana.setDate(dataCompletaSelecionada.getDate() - dataCompletaSelecionada.getDay()); // Volta para o Domingo
+  inicioDaSemana.setHours(0, 0, 0, 0);
+
+  const fimDaSemana = new Date(inicioDaSemana);
+  fimDaSemana.setDate(fimDaSemana.getDate() + 6); // Avança para o Sábado
+  fimDaSemana.setHours(23, 59, 59, 999);
+
+  // Cria um array com os 7 dias exatos desta semana
+  const diasDaSemanaAtual = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(inicioDaSemana);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  // 2. Arrumamos as setinhas de navegação para andarem 7 dias e atualizarem o calendário
+  const irParaSemanaAnterior = () => {
+    const novaData = new Date(ano, mes, diaSelecionado - 7);
+    setDataAtual(novaData); // Atualiza o calendário (caso mude de mês)
+    setDiaSelecionado(novaData.getDate()); // Mantém o diaSelecionado como número!
+  };
+
+  const irParaProximaSemana = () => {
+    const novaData = new Date(ano, mes, diaSelecionado + 7);
+    setDataAtual(novaData);
+    setDiaSelecionado(novaData.getDate());
+  };
 
   return (
     <main className={styles.container}>
@@ -417,136 +449,188 @@ export default function AgendamentosPage() {
           <div className={styles.placeholderCard} style={{ color: 'red' }}>{erro}</div>
         ) : viewMode === 'lista' ? (
           
-          /* VISÃO EM LISTA CONECTADA À API */
-          <div className={styles.listContainer}>
-            {agendamentos.length === 0 ? (
-              <div className={styles.placeholderCard}>Nenhum agendamento encontrado.</div>
-            ) : (
-              agendamentos.map((agendamento) => (
-                <div key={agendamento.id} className={styles.card}>
-                  <div className={styles.cardHeader}>
-                    <span className={styles.timeBadge}>
-                      {formatarData(agendamento.startTime)} • {formatarHorario(agendamento.startTime)} às {formatarHorario(agendamento.endTime)}
-                    </span>
-                    {new Date(agendamento.endTime) < new Date() ? (
-                      <span className={`${styles.statusBadge} ${styles.statusFinalizado}`}>
-                        Finalizado
-                      </span>
-                    ) : (
-                      <span className={`${styles.statusBadge} ${styles.statusConfirmado}`}>
-                        Confirmado
-                      </span>
-                    )}
-                    {session?.user?.email === agendamento.organizerEmail && new Date(agendamento.endTime) > new Date() ? (
-                      <button 
-                        onClick={() => handleExcluir(agendamento.id)}
-                        className={styles.deleteButton}
-                        title="Cancelar Agendamento"
-                      >
-                        🗑️
-                      </button>
-                    ): ""}
+          <div className={styles.weekAgendaContainer}>
+            
+            {/* Navegador da Semana */}
+            <div className={styles.weekHeader}>
+              <button onClick={irParaSemanaAnterior} className={styles.navButton}>&lt;</button>
+              <span className={styles.weekTitle}>
+                Semana de {inicioDaSemana.toLocaleDateString('pt-BR')} a {fimDaSemana.toLocaleDateString('pt-BR')}
+              </span>
+              <button onClick={irParaProximaSemana} className={styles.navButton}>&gt;</button>
+            </div>
+
+            {/* Lista dos 7 Dias da Semana */}
+            <div className={styles.weekDaysList}>
+              {diasDaSemanaAtual.map((diaAtual) => {
+                // Filtra as reuniões que caem EXATAMENTE neste dia
+                const agendamentosDesteDia = agendamentos.filter((ag) => {
+                  const dataAg = new Date(ag.startTime);
+                  return dataAg.getDate() === diaAtual.getDate() &&
+                         dataAg.getMonth() === diaAtual.getMonth() &&
+                         dataAg.getFullYear() === diaAtual.getFullYear();
+                });
+
+                // Formatação do título do dia (Ex: Segunda-feira, 23/03)
+                const nomeDoDia = diaAtual.toLocaleDateString('pt-BR', { weekday: 'long' });
+                const dataCurta = diaAtual.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
+                return (
+                  <div key={diaAtual.toISOString()} className={styles.dayGroup}>
+                    {/* Cabeçalho do Dia */}
+                    <div className={styles.dayGroupHeader}>
+                      <span className={styles.dayName}>{nomeDoDia}</span>
+                      <span className={styles.dayDate}>{dataCurta}</span>
+                    </div>
+
+                    {/* Cartões de Reunião do Dia */}
+                    <div className={styles.dayGroupCards}>
+                      {agendamentosDesteDia.length === 0 ? (
+                        <div className={styles.emptyDay}>Sem reuniões agendadas</div>
+                      ) : (
+                        agendamentosDesteDia.map((agendamento) => (
+                          
+                          /* O SEU CARTÃO INTACTO AQUI DENTRO */
+                          <div key={agendamento.id} className={styles.card}>
+                            <div className={styles.cardHeader}>
+                              <span className={styles.timeBadge}>
+                                {formatarHorario(agendamento.startTime)} às {formatarHorario(agendamento.endTime)}
+                              </span>
+                              
+                              {new Date(agendamento.endTime) < new Date() ? (
+                                <span className={`${styles.statusBadge} ${styles.statusFinalizado}`}>Finalizado</span>
+                              ) : (
+                                <span className={`${styles.statusBadge} ${styles.statusConfirmado}`}>Confirmado</span>
+                              )}
+
+                              {session?.user?.email === agendamento.organizerEmail && new Date(agendamento.endTime) > new Date() ? (
+                                <button 
+                                  onClick={() => handleExcluir(agendamento.id)}
+                                  className={styles.deleteButton}
+                                  title="Cancelar Agendamento"
+                                >
+                                  🗑️
+                                </button>
+                              ) : ""}
+                            </div>
+                            
+                            <div className={styles.cardBody}>
+                              <h2 className={styles.clientName}>{agendamento.title}</h2>
+                              <p className={styles.procedureInfo}>Sala: {agendamento.room?.name || 'Padrão'}</p>
+                              <p className={styles.organizerInfo}>
+                                👤 Reservado por: {agendamento.organizerEmail?.split('@')[0] || 'Desconhecido'}
+                              </p>
+                            </div>
+                          </div>
+                          /* FIM DO SEU CARTÃO */
+
+                        ))
+                      )}
+                    </div>
                   </div>
-                  <div className={styles.cardBody}>
-                    <h2 className={styles.clientName}>{agendamento.title}</h2>
-                    <p className={styles.procedureInfo}>Sala: {agendamento.room?.name || 'Padrão'}</p>
-                    <p className={styles.organizerInfo}>
-                      👤 Reservado por: {agendamento.organizerEmail?.split('@')[0] || 'Desconhecido'}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
+                );
+              })}
+            </div>
           </div>
 
         ) : (
 
           /* VISÃO EM CALENDÁRIO CONECTADA À API */
-          <div className={styles.calendarContainer}>
-            <div className={styles.monthHeader}>
-              <button onClick={mesAnterior} className={styles.navButton}>&lt;</button>
-              <span className={styles.monthTitle}>{mesPorExtenso}</span>
-              <button onClick={proximoMes} className={styles.navButton}>&gt;</button>
-            </div>
+          <div className={styles.calendarSplitLayout}>
+            
+            {/* LADO DIREITO NO PC / TOPO NO CELULAR (Área Vermelha) */}
+            <div className={styles.calendarSide}>
+              <div className={styles.calendarContainer}>
+                <div className={styles.monthHeader}>
+                  <button onClick={mesAnterior} className={styles.navButton}>&lt;</button>
+                  <span className={styles.monthTitle}>{mesPorExtenso}</span>
+                  <button onClick={proximoMes} className={styles.navButton}>&gt;</button>
+                </div>
 
-            <div className={styles.weekDaysGrid}>
-              {diasDaSemana.map(dia => (
-                <div key={dia}>{dia}</div>
-              ))}
-            </div>
+                <div className={styles.weekDaysGrid}>
+                  {diasDaSemana.map(dia => (
+                    <div key={dia}>{dia}</div>
+                  ))}
+                </div>
 
-            <div className={styles.daysGrid}>
-              {diasVazios.map(vazio => (
-                <div key={`vazio-${vazio}`} className={`${styles.dayCell} ${styles.emptyCell}`}></div>
-              ))}
+                <div className={styles.daysGrid}>
+                  {diasVazios.map(vazio => (
+                    <div key={`vazio-${vazio}`} className={`${styles.dayCell} ${styles.emptyCell}`}></div>
+                  ))}
 
-              {dias.map(dia => {
-                const isSelected = dia === diaSelecionado;
-                const hasEvent = verificarSeTemAgendamento(dia); // Usa a função inteligente aqui!
+                  {dias.map(dia => {
+                    const isSelected = dia === diaSelecionado;
+                    const hasEvent = verificarSeTemAgendamento(dia); 
 
-                return (
-                  <button 
-                    key={dia} 
-                    onClick={() => setDiaSelecionado(dia)}
-                    className={`${styles.dayCell} ${isSelected ? styles.selectedDay : ''}`}
-                  >
-                    {dia}
-                    {hasEvent && <span className={styles.eventDot}></span>}
-                  </button>
-                );
-              })}
-            </div>
-            {/* --- NOVA SEÇÃO: LISTA DE HORÁRIOS DO DIA CLICADO --- */}
-            <div className={styles.selectedDayEvents}>
-              <h3 className={styles.selectedDayTitle}>
-                Reuniões para {diaSelecionado} de {mesPorExtenso.split(' ')[0]} {/* Ex: Reuniões para 20 de março */}
-              </h3>
-
-              <div className={styles.listContainer}>
-                {agendamentosDoDiaSelecionado.length === 0 ? (
-                  <div className={styles.emptyStateMessage}>
-                    Nenhuma reunião agendada para este dia.
-                  </div>
-                ) : (
-                  agendamentosDoDiaSelecionado.map((agendamento) => (
-                    <div key={agendamento.id} className={styles.card}>
-                      <div className={styles.cardHeader}>
-                        <span className={styles.timeBadge}>
-                          {formatarHorario(agendamento.startTime)} - {formatarHorario(agendamento.endTime)}
-                        </span>
-                        
-                        {new Date(agendamento.endTime) < new Date() ? (
-                          <span className={`${styles.statusBadge} ${styles.statusFinalizado}`}>
-                            Finalizado
-                          </span>
-                        ) : (
-                          <span className={`${styles.statusBadge} ${styles.statusConfirmado}`}>
-                            Confirmado
-                          </span>
-                        )}
-
-                        {session?.user?.email === agendamento.organizerEmail && new Date(agendamento.endTime) > new Date() ? (
-                          <button 
-                            onClick={() => handleExcluir(agendamento.id)}
-                            className={styles.deleteButton}
-                            title="Cancelar Agendamento"
-                          >
-                            🗑️
-                          </button>
-                        ) : ""}
-                      </div>
-                      <div className={styles.cardBody}>
-                        <h2 className={styles.clientName}>{agendamento.title}</h2>
-                        <p className={styles.procedureInfo}>Sala: {agendamento.room?.name || 'Sem sala definida'}</p>
-                        <p className={styles.organizerInfo}>
-                          👤 Reservado por: {agendamento.organizerEmail?.split('@')[0] || 'Desconhecido'}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
+                    return (
+                      <button 
+                        key={dia} 
+                        onClick={() => setDiaSelecionado(dia)}
+                        className={`${styles.dayCell} ${isSelected ? styles.selectedDay : ''}`}
+                      >
+                        {dia}
+                        {hasEvent && <span className={styles.eventDot}></span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
+
+            {/* LADO ESQUERDO NO PC / BAIXO NO CELULAR (Área Azul) */}
+            <div className={styles.meetingsSide}>
+                <h3 className={styles.selectedDayTitle}>
+                  Reuniões para {diaSelecionado} de {mesPorExtenso.split(' ')[0]}
+                </h3>
+              <div className={styles.selectedDayEvents}>
+
+                <div className={styles.listContainer}>
+                  {agendamentosDoDiaSelecionado.length === 0 ? (
+                    <div className={styles.emptyStateMessage}>
+                      Nenhuma reunião agendada para este dia.
+                    </div>
+                  ) : (
+                    agendamentosDoDiaSelecionado.map((agendamento) => (
+                      <div key={agendamento.id} className={styles.card}>
+                        <div className={styles.cardHeader}>
+                          <span className={styles.timeBadge}>
+                            {formatarHorario(agendamento.startTime)} - {formatarHorario(agendamento.endTime)}
+                          </span>
+                          
+                          {new Date(agendamento.endTime) < new Date() ? (
+                            <span className={`${styles.statusBadge} ${styles.statusFinalizado}`}>
+                              Finalizado
+                            </span>
+                          ) : (
+                            <span className={`${styles.statusBadge} ${styles.statusConfirmado}`}>
+                              Confirmado
+                            </span>
+                          )}
+
+                          {session?.user?.email === agendamento.organizerEmail && new Date(agendamento.endTime) > new Date() ? (
+                            <button 
+                              onClick={() => handleExcluir(agendamento.id)}
+                              className={styles.deleteButton}
+                              title="Cancelar Agendamento"
+                            >
+                              🗑️
+                            </button>
+                          ) : ""}
+                        </div>
+                        <div className={styles.cardBody}>
+                          <h2 className={styles.clientName}>{agendamento.title}</h2>
+                          <p className={styles.procedureInfo}>Sala: {agendamento.room?.name || 'Sem sala definida'}</p>
+                          <p className={styles.organizerInfo}>
+                            👤 Reservado por: {agendamento.organizerEmail?.split('@')[0] || 'Desconhecido'}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
           </div>
         )}
       </section>
