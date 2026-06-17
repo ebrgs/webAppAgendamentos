@@ -48,7 +48,7 @@ export default function LoginPage() {
             Agenda de Salas
           </h2>
           <p className="mt-2 text-sm text-muted">
-            Omega Service Corporate
+            Omega Service
           </p>
         </div>
 
