@@ -131,8 +131,27 @@ export default function AgendamentosPage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const start = new Date(`${formData.data}T${formData.horaInicio}:00`).toISOString();
-      const end = new Date(`${formData.data}T${formData.horaFim}:00`).toISOString();
+      const dataParts = formData.data.split('-');
+      const inicioParts = formData.horaInicio.split(':');
+      const fimParts = formData.horaFim.split(':');
+
+      const start = new Date(
+        parseInt(dataParts[0], 10),
+        parseInt(dataParts[1], 10) - 1,
+        parseInt(dataParts[2], 10),
+        parseInt(inicioParts[0], 10),
+        parseInt(inicioParts[1], 10),
+        0
+      ).toISOString();
+
+      const end = new Date(
+        parseInt(dataParts[0], 10),
+        parseInt(dataParts[1], 10) - 1,
+        parseInt(dataParts[2], 10),
+        parseInt(fimParts[0], 10),
+        parseInt(fimParts[1], 10),
+        0
+      ).toISOString();
 
       const response = await fetch('/api/bookings', {
         method: 'POST',
@@ -190,10 +209,37 @@ export default function AgendamentosPage() {
     e.preventDefault();
     setIsAdminSubmitting(true);
     try {
+      const dataParts = adminFormData.dataInicio.split('-');
+      const horaInicioParts = adminFormData.horaInicio.split(':');
+      const horaFimParts = adminFormData.horaFim.split(':');
+
+      const dataLoopStart = new Date(
+        parseInt(dataParts[0], 10),
+        parseInt(dataParts[1], 10) - 1,
+        parseInt(dataParts[2], 10),
+        parseInt(horaInicioParts[0], 10),
+        parseInt(horaInicioParts[1], 10),
+        0
+      ).toISOString();
+
+      const dataLoopEnd = new Date(
+        parseInt(dataParts[0], 10),
+        parseInt(dataParts[1], 10) - 1,
+        parseInt(dataParts[2], 10),
+        parseInt(horaFimParts[0], 10),
+        parseInt(horaFimParts[1], 10),
+        0
+      ).toISOString();
+
       const res = await fetch('/api/bookings/fixed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adminFormData),
+        body: JSON.stringify({
+          title: adminFormData.title,
+          roomId: adminFormData.roomId,
+          startTimeIso: dataLoopStart,
+          endTimeIso: dataLoopEnd,
+        }),
       });
       if (!res.ok) throw new Error('Erro ao gerar série de reuniões fixas.');
       toast.success('Sucesso! 52 reuniões semanais foram agendadas no sistema.');
@@ -221,7 +267,7 @@ export default function AgendamentosPage() {
           const res = await fetch('/api/bookings/fixed', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: `[FIXO] ${adminFormData.title}`, roomId: adminFormData.roomId }),
+            body: JSON.stringify({ title: `${adminFormData.title}`, roomId: adminFormData.roomId }),
           });
           if (!res.ok) throw new Error('Erro ao apagar série.');
           const dados = await res.json();

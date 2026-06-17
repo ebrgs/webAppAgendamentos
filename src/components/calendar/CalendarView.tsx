@@ -82,7 +82,7 @@ export default function CalendarView({
   };
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
+    <div className="absolute flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
       {/* Calendário (Esquerda) */}
       <div className="w-full lg:w-[360px] lg:shrink-0 lg:sticky lg:top-24">
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-card">
@@ -198,7 +198,7 @@ export default function CalendarView({
             initial="hidden"
             animate="visible"
             key={`${ano}-${mes}-${diaSelecionado}`}
-            className="flex flex-col gap-4"
+            className="flex flex-col gap-4 h-full"
           >
             {agendamentosDoDiaSelecionado.map((agendamento) => (
               <motion.div key={agendamento.id} variants={cardVariants}>

@@ -12,9 +12,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const { title, dataInicio, horaInicio, horaFim, roomId } = await request.json();
+    const { title, startTimeIso, endTimeIso, roomId } = await request.json();
 
-    if (!title || !dataInicio || !horaInicio || !horaFim || !roomId) {
+    if (!title || !startTimeIso || !endTimeIso || !roomId) {
       return NextResponse.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 });
     }
     
@@ -28,9 +28,9 @@ export async function POST(request: Request) {
 
     const agendamentosFixos = [];
     
-    // Configura as datas iniciais
-    const dataLoopStart = new Date(`${dataInicio}T${horaInicio}:00`);
-    const dataLoopEnd = new Date(`${dataInicio}T${horaFim}:00`);
+    // Configura as datas iniciais usando o ISO string enviado pelo client (já resolvido o fuso horário)
+    const dataLoopStart = new Date(startTimeIso);
+    const dataLoopEnd = new Date(endTimeIso);
 
     // Loop mágico: Roda 52 vezes (1 ano inteiro de semanas)
     for (let i = 0; i < 52; i++) {
