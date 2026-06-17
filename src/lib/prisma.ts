@@ -6,13 +6,12 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-// 1. Criamos a conexão com o PostgreSQL usando a URL do seu .env
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+// NOTA: O cast `as any` é necessário por um conflito entre a versão de @types/pg
+// do projeto raiz e a versão embutida em @prisma/adapter-pg. Ambas são funcionalmente
+// idênticas em runtime — este é um problema de tipagem estrutural do TypeScript.
+const adapter = new PrismaPg(pool as unknown as ConstructorParameters<typeof PrismaPg>[0])
 
-// 2. Envolvemos essa conexão no Adaptador do Prisma
-const adapter = new PrismaPg(pool as any)
-
-// 3. Inicializamos o Prisma passando o adaptador (Isso resolve o seu erro!)
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma

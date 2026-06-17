@@ -12,12 +12,16 @@
     "@auth/prisma-adapter": "^2.11.1",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
+    "@radix-ui/react-dialog": "^1.1.17",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.20.0",
     "next": "16.2.0",
     "next-auth": "^4.24.13",
     "nodemailer": "^8.0.3",
     "pg": "^8.20.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

@@ -1,91 +1,99 @@
 // app/page.tsx
-"use client";
+'use client';
 
 import { useState, useEffect } from 'react';
-import styles from './page.module.css';
-import { useSession, signIn, signOut } from 'next-auth/react';
+import { useSession } from 'next-auth/react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Plus, List as ListIcon, Calendar as CalendarIcon, Settings } from 'lucide-react';
+import { toast } from 'sonner';
 
-// 1. Tipagem: Definindo o formato dos dados que vêm da sua API
-interface Agendamento {
-  id: string; // ou number, dependendo do seu schema do Prisma
-  title: string;
-  startTime: string; // O Prisma envia datas como string ISO
-  endTime: string;
-  organizerEmail: string;
-  room?: {
-    name: string;
-  }
-  // user: { name: string }; // Descomente se quiser puxar o nome do usuário da relação
-}
-interface Sala {
-  id: string;
-  name: string
-}
+import { Agendamento, Sala } from '@/types';
+import LoginPage from '@/components/auth/LoginPage';
+import BookingModal, { BookingFormData } from '@/components/bookings/BookingModal';
+import WeekView from '@/components/bookings/WeekView';
+import CalendarView from '@/components/calendar/CalendarView';
+import FixedMeetingModal, { AdminFormData } from '@/components/admin/FixedMeetingModal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { cn } from '@/lib/cn';
 
-const diasDaSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const ADMIN_EMAIL = 'elias.borges@omegaservice.com.br';
+
+const INITIAL_FORM_DATA: BookingFormData = {
+  title: '', data: '', horaInicio: '', horaFim: '', roomId: '', convidados: '',
+};
+
+const INITIAL_ADMIN_FORM: AdminFormData = {
+  title: '', dataInicio: '', horaInicio: '', horaFim: '', roomId: '',
+};
 
 export default function AgendamentosPage() {
+  const { data: session, status } = useSession();
+
+  // --- Estado da aplicação ---
   const [viewMode, setViewMode] = useState<'lista' | 'calendario'>('calendario');
-  
-  // 2. Novos Estados para a API
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
-
-  // 3. Estados para MODAL
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalStep, setModalStep] = useState<1 | 2>(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    data: '',
-    horaInicio: '',
-    horaFim: '',
-    roomId: '',
-    organizador: '',
-    convidados: '',
-  });
   const [salas, setSalas] = useState<Sala[]>([]);
 
-  const { data: session, status } = useSession();
-  const [emailLogin, setEmailLogin] = useState('');
-  const [linkEnviado, setLinkEnviado] = useState(false);
-
-  // Estados do Calendário
+  // --- Estado do Calendário / Semana ---
   const hoje = new Date();
   const [dataAtual, setDataAtual] = useState(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
   const [diaSelecionado, setDiaSelecionado] = useState(hoje.getDate());
-
-  // Lógica do Calendário
   const ano = dataAtual.getFullYear();
   const mes = dataAtual.getMonth();
-  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
-  const primeiroDiaDoMes = new Date(ano, mes, 1).getDay();
-  const diasVazios = Array.from({ length: primeiroDiaDoMes }, (_, i) => i);
-  const dias = Array.from({ length: diasNoMes }, (_, i) => i + 1);
-  const mesPorExtenso = dataAtual.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
-  const mesAnterior = () => setDataAtual(new Date(ano, mes - 1, 1));
-  const proximoMes = () => setDataAtual(new Date(ano, mes + 1, 1));
+  const dataCompletaSelecionada = new Date(ano, mes, diaSelecionado);
+  const inicioDaSemana = new Date(dataCompletaSelecionada);
+  inicioDaSemana.setDate(dataCompletaSelecionada.getDate() - dataCompletaSelecionada.getDay());
+  inicioDaSemana.setHours(0, 0, 0, 0);
+  const fimDaSemana = new Date(inicioDaSemana);
+  fimDaSemana.setDate(fimDaSemana.getDate() + 6);
+  fimDaSemana.setHours(23, 59, 59, 999);
+  const diasDaSemanaAtual = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(inicioDaSemana);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
 
-  // 3. O Fetch: Buscando dados da sua API real
+  // --- Estado dos Modais ---
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalStep, setModalStep] = useState<1 | 2>(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState<BookingFormData>(INITIAL_FORM_DATA);
+
+  const [isModalAdminOpen, setIsModalAdminOpen] = useState(false);
+  const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
+  const [adminFormData, setAdminFormData] = useState<AdminFormData>(INITIAL_ADMIN_FORM);
+
+  // --- Estado do Confirm Dialog ---
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void;
+    isDestructive?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
+
+  // --- Carregamento inicial de dados ---
   useEffect(() => {
     async function carregarDados() {
       try {
-        // Busca Agendamentos
-        const resAgendamentos = await fetch('/api/bookings'); 
+        const resAgendamentos = await fetch('/api/bookings');
         if (!resAgendamentos.ok) throw new Error('Falha ao buscar agendamentos');
         setAgendamentos(await resAgendamentos.json());
 
-        // Busca Salas (Ajuste a URL '/api/rooms' se a sua for diferente)
         const resSalas = await fetch('/api/rooms');
         if (resSalas.ok) {
-          const dataSalas = await resSalas.json();
+          const dataSalas: Sala[] = await resSalas.json();
           setSalas(dataSalas);
-          
-          // Já deixa a primeira sala selecionada por padrão no formulário
           if (dataSalas.length > 0) {
-            setFormData(prev => ({ ...prev, roomId: dataSalas[0].id }));
+            setFormData((prev) => ({ ...prev, roomId: dataSalas[0].id }));
           }
         }
       } catch (err) {
@@ -95,98 +103,33 @@ export default function AgendamentosPage() {
         setLoading(false);
       }
     }
-
     carregarDados();
   }, []);
 
-// 2. TELAS DE CARREGAMENTO E LOGIN
+  // --- Guardas de autenticação ---
   if (status === 'loading') {
-    return <main className={styles.container}><div className={styles.placeholderCard}>Carregando sistema...</div></main>;
-  }
-
-  if (status === 'unauthenticated') {
     return (
-      <main className={styles.container} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-        <div className={styles.modalContent} style={{ textAlign: 'center', border: '1px solid #e5e7eb' }}>
-          <h2 className={styles.modalTitle}>Acesso Corporativo</h2>
-          <p style={{ marginBottom: '24px', color: '#6b7280', fontSize: '0.875rem' }}>
-            Digite seu e-mail para receber o link mágico de acesso à agenda de salas.
-          </p>
-          
-          {linkEnviado ? (
-            <div style={{ color: '#059669', fontWeight: 'bold', padding: '16px', backgroundColor: '#d1fae5', borderRadius: '8px' }}>
-              ✓ Link seguro enviado! Verifique sua caixa de entrada (e a pasta de spam).
-            </div>
-          ) : (
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              // Isso chama o NextAuth nos bastidores pelo método correto (POST)
-              await signIn('email', { email: emailLogin, redirect: false });
-              setLinkEnviado(true);
-            }}>
-              <input 
-                type="email" 
-                className={styles.input} 
-                placeholder="voce@empresa.com" 
-                value={emailLogin}
-                onChange={(e) => setEmailLogin(e.target.value)}
-                required
-                style={{ width: '100%', marginBottom: '16px' }}
-              />
-              <button type="submit" className={styles.btnPrimary} style={{ width: '100%' }}>
-                Receber Link Seguro
-              </button>
-            </form>
-          )}
+      <main className="flex min-h-screen items-center justify-center bg-bg">
+        <div className="flex animate-pulse flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand border-t-transparent" />
+          <p className="text-sm text-muted">Carregando sistema...</p>
         </div>
       </main>
     );
   }
+  if (status === 'unauthenticated') {
+    return <LoginPage />;
+  }
 
-  // 4. Funções auxiliares para formatar os dados na tela
-  const formatarHorario = (dataString: string) => {
-    const data = new Date(dataString);
-    return data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const formatarData = (dataString: string) => {
-    const data = new Date(dataString);
-    return data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
-
-  const verificarSeTemAgendamento = (dia: number) => {
-    // Verifica se existe algum agendamento no ano, mês e dia que estão sendo renderizados
-    return agendamentos.some(ag => {
-      const dataAgendamento = new Date(ag.startTime);
-      return (
-        dataAgendamento.getDate() === dia &&
-        dataAgendamento.getMonth() === mes &&
-        dataAgendamento.getFullYear() === ano
-      );
-    });
-  };
-
-  // NOVA LÓGICA: Filtra os agendamentos apenas para o dia, mês e ano selecionados no calendário
-  const agendamentosDoDiaSelecionado = agendamentos.filter(ag => {
-    const dataAgendamento = new Date(ag.startTime);
-    return (
-      dataAgendamento.getDate() === diaSelecionado &&
-      dataAgendamento.getMonth() === mes && // 'mes' e 'ano' vêm do estado dataAtual
-      dataAgendamento.getFullYear() === ano
-    );
-  });
-
-  // Função para passar da Etapa 1 para a Etapa 2
+  // --- Handlers de agendamento ---
   const handleAvancar = (e: React.FormEvent) => {
-    e.preventDefault(); // Impede o envio do form ainda
+    e.preventDefault();
     setModalStep(2);
   };
 
-  // Sua função de envio final atualizada
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-
     try {
       const start = new Date(`${formData.data}T${formData.horaInicio}:00`).toISOString();
       const end = new Date(`${formData.data}T${formData.horaFim}:00`).toISOString();
@@ -200,7 +143,7 @@ export default function AgendamentosPage() {
           endTime: end,
           roomId: formData.roomId,
           organizerEmail: session?.user?.email,
-          participantsEmails: formData.convidados,  // <- ENVIANDO PARA API
+          participantsEmails: formData.convidados,
         }),
       });
 
@@ -209,75 +152,94 @@ export default function AgendamentosPage() {
         throw new Error(errorData.error || 'Erro ao agendar reunião');
       }
 
-      const novoAgendamento = await response.json();
+      const novoAgendamento: Agendamento = await response.json();
       setAgendamentos((prev) => [...prev, novoAgendamento]);
-      
-      // Limpeza total
       setIsModalOpen(false);
-      setModalStep(1); // Volta o modal para a etapa 1 para a próxima vez
-      setFormData({ 
-        title: '', data: '', horaInicio: '', horaFim: '', roomId: salas.length > 0 ? salas[0].id : '',
-        organizador: '', convidados: '' // Limpa os e-mails
-      });
-      alert('Reunião agendada com sucesso!');
-
-    } catch (error: any) {
-      alert(error.message);
+      setModalStep(1);
+      setFormData({ ...INITIAL_FORM_DATA, roomId: salas.length > 0 ? salas[0].id : '' });
+      toast.success('Reunião agendada com sucesso!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Erro ao agendar reunião');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // FUNÇÃO PARA CANCELAR AGENDAMENTO
-  const handleExcluir = async (id: string) => {
-    // Uma pequena confirmação para evitar toques acidentais no telemóvel
-    if (!window.confirm('Tem a certeza que deseja cancelar este agendamento?')) return;
+  const handleExcluir = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Cancelar agendamento',
+      description: 'Tem certeza que deseja cancelar este agendamento? Esta ação não pode ser desfeita.',
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/bookings/${id}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('Erro ao cancelar agendamento');
+          setAgendamentos((prev) => prev.filter((ag) => ag.id !== id));
+          toast.success('Agendamento cancelado com sucesso.');
+        } catch (error) {
+          toast.error('Não foi possível cancelar o agendamento.');
+          console.error(error);
+        }
+      },
+    });
+  };
 
+  // --- Handlers do painel Admin ---
+  const handleAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsAdminSubmitting(true);
     try {
-      const response = await fetch(`/api/bookings/${id}`, {
-        method: 'DELETE',
+      const res = await fetch('/api/bookings/fixed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(adminFormData),
       });
-
-      if (!response.ok) {
-        throw new Error('Erro ao cancelar agendamento');
-      }
-
-      // Atualiza a lista no ecrã imediatamente, removendo o cartão apagado
-      setAgendamentos((prev) => prev.filter((ag) => ag.id !== id));
-      
-      // Opcional: Se quiser recarregar também a verificação do calendário
-      // a lógica atual já lida com isso assim que o estado 'agendamentos' muda!
-
-    } catch (error) {
-      alert('Não foi possível cancelar o agendamento.');
-      console.error(error);
+      if (!res.ok) throw new Error('Erro ao gerar série de reuniões fixas.');
+      toast.success('Sucesso! 52 reuniões semanais foram agendadas no sistema.');
+      setIsModalAdminOpen(false);
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro desconhecido');
+    } finally {
+      setIsAdminSubmitting(false);
     }
   };
-// --- LÓGICA DA VISÃO SEMANAL (AGENDA) ---
-  
-  // 1. Criamos a data completa juntando o Ano e Mês do calendário com o Dia clicado
-  const dataCompletaSelecionada = new Date(ano, mes, diaSelecionado);
 
-  const inicioDaSemana = new Date(dataCompletaSelecionada);
-  inicioDaSemana.setDate(dataCompletaSelecionada.getDate() - dataCompletaSelecionada.getDay()); // Volta para o Domingo
-  inicioDaSemana.setHours(0, 0, 0, 0);
+  const handleAdminDelete = () => {
+    if (!adminFormData.title || !adminFormData.roomId) {
+      toast.error('Para apagar uma série, preencha o Nome Exato e selecione a Sala corretamente.');
+      return;
+    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Apagar Série Fixa',
+      description: `Tem certeza que deseja APAGAR todas as 52 reuniões fixas com o nome "${adminFormData.title}" nesta sala?`,
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetch('/api/bookings/fixed', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: `[FIXO] ${adminFormData.title}`, roomId: adminFormData.roomId }),
+          });
+          if (!res.ok) throw new Error('Erro ao apagar série.');
+          const dados = await res.json();
+          toast.success(`Sucesso! Foram removidos ${dados.count} agendamentos fixos.`);
+          setIsModalAdminOpen(false);
+          setTimeout(() => window.location.reload(), 1500);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Erro desconhecido');
+        }
+      },
+    });
+  };
 
-  const fimDaSemana = new Date(inicioDaSemana);
-  fimDaSemana.setDate(fimDaSemana.getDate() + 6); // Avança para o Sábado
-  fimDaSemana.setHours(23, 59, 59, 999);
-
-  // Cria um array com os 7 dias exatos desta semana
-  const diasDaSemanaAtual = Array.from({ length: 7 }).map((_, i) => {
-    const d = new Date(inicioDaSemana);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-
-  // 2. Arrumamos as setinhas de navegação para andarem 7 dias e atualizarem o calendário
+  // --- Navegação semanal ---
   const irParaSemanaAnterior = () => {
     const novaData = new Date(ano, mes, diaSelecionado - 7);
-    setDataAtual(novaData); // Atualiza o calendário (caso mude de mês)
-    setDiaSelecionado(novaData.getDate()); // Mantém o diaSelecionado como número!
+    setDataAtual(novaData);
+    setDiaSelecionado(novaData.getDate());
   };
 
   const irParaProximaSemana = () => {
@@ -286,354 +248,212 @@ export default function AgendamentosPage() {
     setDiaSelecionado(novaData.getDate());
   };
 
+  // --- Render ---
   return (
-    <main className={styles.container}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>Agendamentos</h1>
-      </header>
-
-      {/* BOTÃO FLUTUANTE (FAB) */}
-      <button 
-        className={styles.fabButton} 
-        onClick={() => setIsModalOpen(true)}
-      >
-        +
-      </button>
-
-      {/* O MODAL DE NOVO AGENDAMENTO */}
-      {isModalOpen && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
-            <h2 className={styles.modalTitle}>{modalStep === 1 ? 'Nova Reunião' : 'Identificação'}</h2>
-            
-            {modalStep === 1 ? (
-              /* --- ETAPA 1: DADOS DA REUNIÃO --- */
-              <form onSubmit={handleAvancar}>
-                
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Motivo da Reunião</label>
-                  <input 
-                    type="text" 
-                    className={styles.input} 
-                    placeholder="Ex: Alinhamento Semanal"
-                    value={formData.title} 
-                    onChange={(e) => setFormData({...formData, title: e.target.value})} 
-                    required 
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Data</label>
-                  <input 
-                    type="date" 
-                    className={styles.input} 
-                    value={formData.data}
-                    onChange={(e) => setFormData({...formData, data: e.target.value})}
-                    required
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Sala</label>
-                  <select 
-                    className={styles.input}
-                    value={formData.roomId}
-                    onChange={(e) => setFormData({...formData, roomId: e.target.value})}
-                    required
-                  >
-                    {salas.map((sala) => (
-                      <option key={sala.id} value={sala.id}>
-                        {sala.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className={styles.row}>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Início</label>
-                    <input 
-                      type="time" 
-                      className={styles.input} 
-                      value={formData.horaInicio}
-                      onChange={(e) => setFormData({...formData, horaInicio: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className={styles.formGroup}>
-                    <label className={styles.label}>Fim</label>
-                    <input 
-                      type="time" 
-                      className={styles.input} 
-                      value={formData.horaFim}
-                      onChange={(e) => setFormData({...formData, horaFim: e.target.value})}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className={styles.buttonGroup}>
-                  <button 
-                    type="button" 
-                    className={styles.btnSecondary} 
-                    onClick={() => { setIsModalOpen(false); setModalStep(1); }}
-                  >
-                    Cancelar
-                  </button>
-                  <button type="submit" className={styles.btnPrimary}>
-                    Avançar &rarr;
-                  </button>
-                </div>
-              </form>
-
-            ) : (
-
-              /* --- ETAPA 2: DADOS DE CONTATO --- */
-              <form onSubmit={handleSubmit}>
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>Seu E-mail (Organizador)</label>
-                  <input 
-                    type="email" 
-                    className={styles.input} 
-                    placeholder="voce@empresa.com"
-                    value={session?.user?.email || ''}
-                    disabled
-                  />
-                </div>
-
-                <div className={styles.formGroup}>
-                  <label className={styles.label}>E-mail dos Participantes</label>
-                  <textarea 
-                    className={styles.textarea} 
-                    placeholder="Separe os e-mails por vírgula. Ex: joao@empresa.com, maria@empresa.com"
-                    value={formData.convidados}
-                    onChange={(e) => setFormData({...formData, convidados: e.target.value})}
-                  />
-                </div>
-
-                <div className={styles.buttonGroup}>
-                  <button type="button" className={styles.btnSecondary} onClick={() => setModalStep(1)}>
-                    &larr; Voltar
-                  </button>
-                  <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
-                    {isSubmitting ? 'Salvando...' : 'Confirmar Reserva'}
-                  </button>
-                </div>
-              </form>
-            )}
+    <div className="min-h-screen bg-bg flex flex-col font-sans">
+      {/* Header Sticky com Frosted Glass */}
+      <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between border-b border-border bg-surface/80 px-6 backdrop-blur-md">
+        <div className="flex items-center gap-4">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">
+            Agenda de Salas
+          </h1>
+          <div className="hidden sm:flex rounded-lg bg-surface-subtle p-1 shadow-sm border border-border-subtle">
+            <button
+              onClick={() => setViewMode('lista')}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                viewMode === 'lista'
+                  ? 'bg-surface text-foreground shadow-card'
+                  : 'text-muted hover:text-foreground'
+              )}
+            >
+              <ListIcon className="h-4 w-4" />
+              Lista
+            </button>
+            <button
+              onClick={() => setViewMode('calendario')}
+              className={cn(
+                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                viewMode === 'calendario'
+                  ? 'bg-surface text-foreground shadow-card'
+                  : 'text-muted hover:text-foreground'
+              )}
+            >
+              <CalendarIcon className="h-4 w-4" />
+              Calendário
+            </button>
           </div>
         </div>
-      )}
 
-      <div className={styles.toggleContainer}>
-        <div className={styles.toggleWrapper}>
-          <button 
-            className={`${styles.toggleButton} ${viewMode === 'lista' ? styles.activeButton : ''}`}
+        <div className="flex items-center gap-3">
+          {session?.user?.email === ADMIN_EMAIL && (
+            <button
+              onClick={() => {
+                if (salas.length > 0) setAdminFormData((prev) => ({ ...prev, roomId: salas[0].id }));
+                setIsModalAdminOpen(true);
+              }}
+              className="hidden sm:flex items-center gap-2 rounded-md bg-surface px-3 py-1.5 text-sm font-medium text-foreground border border-border shadow-sm transition-colors hover:bg-surface-subtle"
+            >
+              <Settings className="h-4 w-4" />
+              Configurar Reuniões Fixas
+            </button>
+          )}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="hidden sm:flex items-center gap-2 rounded-md bg-brand px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-brand-dark active:scale-95"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Agendamento
+          </button>
+        </div>
+      </header>
+
+      {/* Toggle View Mobile (aparece apenas em telas pequenas) */}
+      <div className="flex sm:hidden justify-center p-4">
+        <div className="flex w-full max-w-[300px] rounded-lg bg-surface-subtle p-1 shadow-sm border border-border-subtle">
+          <button
             onClick={() => setViewMode('lista')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200',
+              viewMode === 'lista'
+                ? 'bg-surface text-foreground shadow-card'
+                : 'text-muted hover:text-foreground'
+            )}
           >
             Lista
           </button>
-          <button 
-            className={`${styles.toggleButton} ${viewMode === 'calendario' ? styles.activeButton : ''}`}
+          <button
             onClick={() => setViewMode('calendario')}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-all duration-200',
+              viewMode === 'calendario'
+                ? 'bg-surface text-foreground shadow-card'
+                : 'text-muted hover:text-foreground'
+            )}
           >
             Calendário
           </button>
         </div>
       </div>
 
-      <section className={styles.contentArea}>
-        {loading ? (
-          <div className={styles.placeholderCard}>Carregando agenda...</div>
-        ) : erro ? (
-          <div className={styles.placeholderCard} style={{ color: 'red' }}>{erro}</div>
-        ) : viewMode === 'lista' ? (
-          
-          <div className={styles.weekAgendaContainer}>
-            
-            {/* Navegador da Semana */}
-            <div className={styles.weekHeader}>
-              <button onClick={irParaSemanaAnterior} className={styles.navButton}>&lt;</button>
-              <span className={styles.weekTitle}>
-                Semana de {inicioDaSemana.toLocaleDateString('pt-BR')} a {fimDaSemana.toLocaleDateString('pt-BR')}
-              </span>
-              <button onClick={irParaProximaSemana} className={styles.navButton}>&gt;</button>
-            </div>
-
-            {/* Lista dos 7 Dias da Semana */}
-            <div className={styles.weekDaysList}>
-              {diasDaSemanaAtual.map((diaAtual) => {
-                // Filtra as reuniões que caem EXATAMENTE neste dia
-                const agendamentosDesteDia = agendamentos.filter((ag) => {
-                  const dataAg = new Date(ag.startTime);
-                  return dataAg.getDate() === diaAtual.getDate() &&
-                         dataAg.getMonth() === diaAtual.getMonth() &&
-                         dataAg.getFullYear() === diaAtual.getFullYear();
-                });
-
-                // Formatação do título do dia (Ex: Segunda-feira, 23/03)
-                const nomeDoDia = diaAtual.toLocaleDateString('pt-BR', { weekday: 'long' });
-                const dataCurta = diaAtual.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-
-                return (
-                  <div key={diaAtual.toISOString()} className={styles.dayGroup}>
-                    {/* Cabeçalho do Dia */}
-                    <div className={styles.dayGroupHeader}>
-                      <span className={styles.dayName}>{nomeDoDia}</span>
-                      <span className={styles.dayDate}>{dataCurta}</span>
-                    </div>
-
-                    {/* Cartões de Reunião do Dia */}
-                    <div className={styles.dayGroupCards}>
-                      {agendamentosDesteDia.length === 0 ? (
-                        <div className={styles.emptyDay}>Sem reuniões agendadas</div>
-                      ) : (
-                        agendamentosDesteDia.map((agendamento) => (
-                          
-                          /* O SEU CARTÃO INTACTO AQUI DENTRO */
-                          <div key={agendamento.id} className={styles.card}>
-                            <div className={styles.cardHeader}>
-                              <span className={styles.timeBadge}>
-                                {formatarHorario(agendamento.startTime)} às {formatarHorario(agendamento.endTime)}
-                              </span>
-                              
-                              {new Date(agendamento.endTime) < new Date() ? (
-                                <span className={`${styles.statusBadge} ${styles.statusFinalizado}`}>Finalizado</span>
-                              ) : (
-                                <span className={`${styles.statusBadge} ${styles.statusConfirmado}`}>Confirmado</span>
-                              )}
-
-                              {session?.user?.email === agendamento.organizerEmail && new Date(agendamento.endTime) > new Date() ? (
-                                <button 
-                                  onClick={() => handleExcluir(agendamento.id)}
-                                  className={styles.deleteButton}
-                                  title="Cancelar Agendamento"
-                                >
-                                  🗑️
-                                </button>
-                              ) : ""}
-                            </div>
-                            
-                            <div className={styles.cardBody}>
-                              <h2 className={styles.clientName}>{agendamento.title}</h2>
-                              <p className={styles.procedureInfo}>Sala: {agendamento.room?.name || 'Padrão'}</p>
-                              <p className={styles.organizerInfo}>
-                                👤 Reservado por: {agendamento.organizerEmail?.split('@')[0] || 'Desconhecido'}
-                              </p>
-                            </div>
-                          </div>
-                          /* FIM DO SEU CARTÃO */
-
-                        ))
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-        ) : (
-
-          /* VISÃO EM CALENDÁRIO CONECTADA À API */
-          <div className={styles.calendarSplitLayout}>
-            
-            {/* LADO DIREITO NO PC / TOPO NO CELULAR (Área Vermelha) */}
-            <div className={styles.calendarSide}>
-              <div className={styles.calendarContainer}>
-                <div className={styles.monthHeader}>
-                  <button onClick={mesAnterior} className={styles.navButton}>&lt;</button>
-                  <span className={styles.monthTitle}>{mesPorExtenso}</span>
-                  <button onClick={proximoMes} className={styles.navButton}>&gt;</button>
-                </div>
-
-                <div className={styles.weekDaysGrid}>
-                  {diasDaSemana.map(dia => (
-                    <div key={dia}>{dia}</div>
-                  ))}
-                </div>
-
-                <div className={styles.daysGrid}>
-                  {diasVazios.map(vazio => (
-                    <div key={`vazio-${vazio}`} className={`${styles.dayCell} ${styles.emptyCell}`}></div>
-                  ))}
-
-                  {dias.map(dia => {
-                    const isSelected = dia === diaSelecionado;
-                    const hasEvent = verificarSeTemAgendamento(dia); 
-
-                    return (
-                      <button 
-                        key={dia} 
-                        onClick={() => setDiaSelecionado(dia)}
-                        className={`${styles.dayCell} ${isSelected ? styles.selectedDay : ''}`}
-                      >
-                        {dia}
-                        {hasEvent && <span className={styles.eventDot}></span>}
-                      </button>
-                    );
-                  })}
-                </div>
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 md:py-8">
+        <div className="mx-auto max-w-6xl">
+          {loading ? (
+            <div className="flex h-[400px] items-center justify-center rounded-xl border border-border bg-surface shadow-sm">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+                <span className="text-sm text-muted">Carregando calendário...</span>
               </div>
             </div>
-
-            {/* LADO ESQUERDO NO PC / BAIXO NO CELULAR (Área Azul) */}
-            <div className={styles.meetingsSide}>
-                <h3 className={styles.selectedDayTitle}>
-                  Reuniões para {diaSelecionado} de {mesPorExtenso.split(' ')[0]}
-                </h3>
-              <div className={styles.selectedDayEvents}>
-
-                <div className={styles.listContainer}>
-                  {agendamentosDoDiaSelecionado.length === 0 ? (
-                    <div className={styles.emptyStateMessage}>
-                      Nenhuma reunião agendada para este dia.
-                    </div>
-                  ) : (
-                    agendamentosDoDiaSelecionado.map((agendamento) => (
-                      <div key={agendamento.id} className={styles.card}>
-                        <div className={styles.cardHeader}>
-                          <span className={styles.timeBadge}>
-                            {formatarHorario(agendamento.startTime)} - {formatarHorario(agendamento.endTime)}
-                          </span>
-                          
-                          {new Date(agendamento.endTime) < new Date() ? (
-                            <span className={`${styles.statusBadge} ${styles.statusFinalizado}`}>
-                              Finalizado
-                            </span>
-                          ) : (
-                            <span className={`${styles.statusBadge} ${styles.statusConfirmado}`}>
-                              Confirmado
-                            </span>
-                          )}
-
-                          {session?.user?.email === agendamento.organizerEmail && new Date(agendamento.endTime) > new Date() ? (
-                            <button 
-                              onClick={() => handleExcluir(agendamento.id)}
-                              className={styles.deleteButton}
-                              title="Cancelar Agendamento"
-                            >
-                              🗑️
-                            </button>
-                          ) : ""}
-                        </div>
-                        <div className={styles.cardBody}>
-                          <h2 className={styles.clientName}>{agendamento.title}</h2>
-                          <p className={styles.procedureInfo}>Sala: {agendamento.room?.name || 'Sem sala definida'}</p>
-                          <p className={styles.organizerInfo}>
-                            👤 Reservado por: {agendamento.organizerEmail?.split('@')[0] || 'Desconhecido'}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+          ) : erro ? (
+            <div className="flex h-[400px] items-center justify-center rounded-xl border border-danger-subtle bg-surface shadow-sm">
+              <p className="text-sm text-danger">{erro}</p>
             </div>
+          ) : (
+            <AnimatePresence mode="wait">
+              {viewMode === 'lista' ? (
+                <motion.div
+                  key="lista"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <WeekView
+                    agendamentos={agendamentos}
+                    diasDaSemanaAtual={diasDaSemanaAtual}
+                    inicioDaSemana={inicioDaSemana}
+                    fimDaSemana={fimDaSemana}
+                    sessionEmail={session?.user?.email}
+                    onExcluir={handleExcluir}
+                    onSemanaAnterior={irParaSemanaAnterior}
+                    onProximaSemana={irParaProximaSemana}
+                  />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="calendario"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <CalendarView
+                    agendamentos={agendamentos}
+                    dataAtual={dataAtual}
+                    diaSelecionado={diaSelecionado}
+                    sessionEmail={session?.user?.email}
+                    onDiaClick={setDiaSelecionado}
+                    onMesAnterior={() => setDataAtual(new Date(ano, mes - 1, 1))}
+                    onProximoMes={() => setDataAtual(new Date(ano, mes + 1, 1))}
+                    onExcluir={handleExcluir}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          )}
+        </div>
+      </main>
 
-          </div>
-        )}
-      </section>
-    </main>
+      {/* FAB Mobile */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-6 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-raised transition-colors hover:bg-brand-dark sm:hidden z-50"
+      >
+        <Plus className="h-6 w-6" />
+      </motion.button>
+      
+      {session?.user?.email === ADMIN_EMAIL && (
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => {
+            if (salas.length > 0) setAdminFormData((prev) => ({ ...prev, roomId: salas[0].id }));
+            setIsModalAdminOpen(true);
+          }}
+          className="fixed bottom-24 right-6 flex h-12 w-12 items-center justify-center rounded-full bg-surface border border-border text-foreground shadow-raised transition-colors hover:bg-surface-subtle sm:hidden z-50"
+        >
+          <Settings className="h-5 w-5" />
+        </motion.button>
+      )}
+
+      {/* Modais Globais */}
+      <BookingModal
+        isOpen={isModalOpen}
+        modalStep={modalStep}
+        isSubmitting={isSubmitting}
+        formData={formData}
+        salas={salas}
+        sessionEmail={session?.user?.email}
+        onFormChange={(updates) => setFormData((prev) => ({ ...prev, ...updates }))}
+        onAvancar={handleAvancar}
+        onSubmit={handleSubmit}
+        onClose={() => { setIsModalOpen(false); setModalStep(1); }}
+        onBack={() => setModalStep(1)}
+      />
+
+      <FixedMeetingModal
+        isOpen={isModalAdminOpen}
+        isSubmitting={isAdminSubmitting}
+        formData={adminFormData}
+        salas={salas}
+        onFormChange={(updates) => setAdminFormData((prev) => ({ ...prev, ...updates }))}
+        onSubmit={handleAdminSubmit}
+        onDelete={handleAdminDelete}
+        onClose={() => setIsModalAdminOpen(false)}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        isDestructive={confirmDialog.isDestructive}
+        onConfirm={confirmDialog.onConfirm}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+      />
+    </div>
   );
 }
