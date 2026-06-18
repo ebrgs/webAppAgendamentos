@@ -53,7 +53,11 @@ export async function GET(request: Request) {
         ? `${reuniao.organizerEmail}, ${reuniao.participantsEmails}` 
         : reuniao.organizerEmail;
       console.log(`[ROBÔ] Disparando e-mail para a reunião: ${reuniao.title}`);
-      const horaFormatada = reuniao.startTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+      const dataAjustada = new Date(reuniao.startTime)
+      dataAjustada.setHours(dataAjustada.getHours() - 3)
+      
+      const horaFormatada = dataAjustada.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
       // 1. Dispara o e-mail
       await transporter.sendMail({
@@ -63,7 +67,7 @@ export async function GET(request: Request) {
         html: `
           <h2>Sua reunião vai começar em breve.</h2>
           <p><strong>Motivo:</strong> ${reuniao.title}</p>
-          <p><strong>Horário:</strong> ${horaFormatada+3}</p>
+          <p><strong>Horário:</strong> ${horaFormatada}</p>
           <p><strong>Sala:</strong> ${reuniao.room.name}</p>
           <br/>
           <p>Por favor, dirija-se à sala no horário marcado.</p>
