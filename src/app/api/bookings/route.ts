@@ -113,7 +113,9 @@ export async function POST(request: Request) {
         : organizerEmail;
 
       const dataFormatada = start.toLocaleDateString('pt-BR');
-      const horaFormatada = start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const dataAjustada = new Date(start)
+      dataAjustada.setHours(dataAjustada.getHours() - 3)
+      const horaFormatada = dataAjustada.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
       await transporter.sendMail({
         from: `"Salas de Reunião" <${process.env.EMAIL_USER}>`,
