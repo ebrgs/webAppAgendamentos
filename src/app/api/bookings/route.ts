@@ -125,7 +125,7 @@ export async function POST(request: Request) {
           <p><strong>Data:</strong> ${dataFormatada} às ${horaFormatada}</p>
           <p><strong>Sala:</strong> ${newBooking.room.name}</p>
           <br/>
-          <p>Você receberá um lembrete 30 minutos antes de começar.</p>
+          <p>Você receberá um lembrete antes de começar.</p>
         `,
       });
     }
