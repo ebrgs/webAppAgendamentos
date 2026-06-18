@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   try {
     const agora = new Date();
     // Pega a data de agora + 35 minutos para termos uma janela de busca segura
-    const daquiA35Minutos = new Date(agora.getTime() + 35 * 60000); 
+    const daquiA35Minutos = new Date(agora.getTime() + 215 * 60000); 
 
     console.log(`[ROBÔ] Procurando reuniões entre: ${agora.toLocaleString()} e ${daquiA35Minutos.toLocaleString()}`);
     // Busca reuniões que:
@@ -61,9 +61,9 @@ export async function GET(request: Request) {
         to: listaDeEmails,
         subject: `⏰ Lembrete: Sua reunião "${reuniao.title}" começa em breve!`,
         html: `
-          <h2>Sua reunião vai começar em aproximadamente 30 minutos.</h2>
+          <h2>Sua reunião vai começar em breve.</h2>
           <p><strong>Motivo:</strong> ${reuniao.title}</p>
-          <p><strong>Horário:</strong> ${horaFormatada}</p>
+          <p><strong>Horário:</strong> ${horaFormatada+3}</p>
           <p><strong>Sala:</strong> ${reuniao.room.name}</p>
           <br/>
           <p>Por favor, dirija-se à sala no horário marcado.</p>
